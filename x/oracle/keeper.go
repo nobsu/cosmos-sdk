@@ -4,48 +4,45 @@ import (
 	"github.com/cosmos/cosmos-sdk/wire"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-
-	"github.com/cosmos/cosmos-sdk/x/oracle/types"
+	"github.com/cosmos/cosmos-sdk/x/stake"
 )
 
 type Keeper struct {
-	key        sdk.StoreKey
-	cdc        *wire.Codec
-	dispatcher types.Dispatcher
-}
+	key sdk.StoreKey
+	cdc *wire.Codec
 
-func (keeper Keeper) Dispatcher() types.Dispatcher {
-	return keeper.dispatcher
+	sk stake.Keeper
 }
 
 func NewKeeper(key sdk.StoreKey, cdc *wire.Codec) Keeper {
 	return Keeper{
-		key:        key,
-		cdc:        cdc,
-		dispatcher: types.NewDispatcher(),
+		key: key,
+		cdc: cdc,
 	}
 }
 
 type OracleInfo struct {
 	// ValidatorsHash []byte
-	Signers    []sdk.Address
-	TotalPower uint64
-	Processed  bool
+	Signers   []sdk.Address
+	Power     sdk.Rat
+	Processed bool
 }
 
-func (keeper Keeper) OracleInfo(ctx sdk.Context, oracle types.Oracle) (res OracleInfo) {
+func (keeper Keeper) OracleInfo(ctx sdk.Context, oracle Oracle) (res OracleInfo) {
 	store := ctx.KVStore(keeper.key)
 
-	bz, err := keeper.cdc.MarshalBinary(oracle)
+	key, err := keeper.cdc.MarshalBinary(oracle)
 	if err != nil {
 		panic(err)
 	}
 
+	bz := store.Get(key)
+
 	if bz == nil {
 		return OracleInfo{
-			Signers:    []sdk.Address{},
-			TotalPower: 0,
-			Processed:  false,
+			Signers:   []sdk.Address{},
+			Power:     sdk.ZeroRat,
+			Processed: false,
 		}
 	}
 
@@ -56,7 +53,7 @@ func (keeper Keeper) OracleInfo(ctx sdk.Context, oracle types.Oracle) (res Oracl
 	return
 }
 
-func (keeper Keeper) setInfo(ctx sdk.Context, oracle types.Oracle, info OracleInfo) {
+func (keeper Keeper) setInfo(ctx sdk.Context, oracle Oracle, info OracleInfo) {
 	store := ctx.KVStore(keeper.key)
 
 	k, err := keeper.cdc.MarshalBinary(oracle)

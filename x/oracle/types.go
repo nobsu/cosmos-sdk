@@ -4,18 +4,12 @@ import (
 	"encoding/json"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-
-	"github.com/cosmos/cosmos-sdk/x/oracle/types"
 )
 
 // implements sdk.Msg
 type OracleMsg struct {
-	Oracle types.Oracle
+	Oracle
 	Signer sdk.Address
-}
-
-func (msg OracleMsg) Type() string {
-	return "oracle"
 }
 
 func (msg OracleMsg) Get(key interface{}) interface{} {
@@ -30,10 +24,11 @@ func (msg OracleMsg) GetSignBytes() []byte {
 	return bz
 }
 
-func (msg OracleMsg) ValidateBasic() sdk.Error {
-	return msg.Oracle.ValidateBasic()
+func (msg OracleMsg) GetSigners() []sdk.Address {
+	return []sdk.Address{msg.Signer}
 }
 
-func (msg OracleMsg) GetSigners() []sdk.Address {
-	return []sdk.Address{Oracle.Signer}
+type Oracle interface {
+	Type() string
+	ValidateBasic() sdk.Error
 }

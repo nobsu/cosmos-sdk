@@ -1,40 +1,22 @@
 package oracle
 
 import (
-	"reflect"
+	"bytes"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/cosmos/cosmos-sdk/x/stake"
 )
 
-func NewHandler(keeper Keeper, sk stake.Keeper) sdk.Handler {
-	return func(ctx sdk.Context, msg sdk.Msg) sdk.Result {
-		switch msg := msg.(type) {
-		case OracleMsg:
-			return handleOracleMsg(ctx, keeper, sk, msg)
-		default:
-			errMsg := "Unrecognized oracle Msg type: " + reflect.TypeOf(msg).Name()
-			return sdk.ErrUnknownRequest(errMsg).Result()
-		}
-	}
-}
+type Handler func(ctx sdk.Context, o Oracle) sdk.Error
 
-func getValidator(ctx sdk.Context, sk stake.Keeper, addr sdk.Address) (stake.Validator, bool) {
-	valset := sk.GetValidators(ctx)
-	for _, val := range valset {
-		if val.Address == addr {
-			return val, true
-		}
-	}
-	return stake.Validator{}, false
-}
+func (keeper Keeper) Handle(h Handler, ctx sdk.Context, msg OracleMsg) sdk.Result {
+	sk := keeper.sk
 
-func handleOracleMsg(ctx sdk.Context, keeper Keeper, sk stake.Keeper, msg OracleMsg) sdk.Result {
 	// Check the signer is a validater
-	val, ok := getValidator(ctx, sk, msg.Signer)
+	val, ok := getValidator(ctx, keeper.sk, msg.Signer)
 	if !ok {
-		return ErrNotValidator(msg.Signer)
+		return ErrNotValidator(msg.Signer).Result()
 	}
 
 	oracle := msg.Oracle
@@ -42,7 +24,7 @@ func handleOracleMsg(ctx sdk.Context, keeper Keeper, sk stake.Keeper, msg Oracle
 
 	// Check the oracle is already processed
 	if info.Processed {
-		return ErrAlreadyProcessed()
+		return ErrAlreadyProcessed().Result()
 	}
 
 	// TODO: implement valset change later
@@ -50,15 +32,39 @@ func handleOracleMsg(ctx sdk.Context, keeper Keeper, sk stake.Keeper, msg Oracle
 
 	// Add the signer to signer queue
 	for _, s := range info.Signers {
-		if s == msg.Signer {
-			return ErrAlreadySigned()
+		if bytes.Equal(s, msg.Signer) {
+			return ErrAlreadySigned().Result()
 		}
 	}
 	info.Signers = append(info.Signers, msg.Signer)
-	info.TotalPower += val.VotingPower
+	info.Power = info.Power.Add(val.Power)
 
-	if info.TotalPower >= sm.TotalPower(ctx)*2/3 { // TODO: make "2/3" modifiable
-		keeper.Dispatcher.Dispatch(oracle.Type())(ctx, oracle)
+	supermaj := sdk.NewRat(2, 3)
+	totalPower := sk.GetPool(ctx).BondedShares
+	if info.Power.GT(totalPower.Mul(supermaj)) { // TODO: make "2/3" modifiable
+		cctx, write := ctx.CacheContext()
+		err := h(cctx, oracle)
+		info.Processed = true
+		keeper.setInfo(ctx, oracle, info)
+		if err != nil {
+			return sdk.Result{
+				Code: sdk.CodeOK,
+				Log:  err.ABCILog(),
+			}
+		}
+		write()
+		return sdk.Result{}
 	}
+	keeper.setInfo(ctx, oracle, info)
+	return sdk.Result{}
+}
 
+func getValidator(ctx sdk.Context, sk stake.Keeper, addr sdk.Address) (stake.Validator, bool) {
+	valset := sk.GetValidators(ctx)
+	for _, val := range valset {
+		if bytes.Equal(val.Address, addr) {
+			return val, true
+		}
+	}
+	return stake.Validator{}, false
 }
