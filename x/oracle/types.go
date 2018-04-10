@@ -7,8 +7,13 @@ import (
 )
 
 // implements sdk.Msg
+type Oracle interface {
+	Payload
+	GetSigner() sdk.Address
+}
+
 type OracleMsg struct {
-	Oracle
+	Payload
 	Signer sdk.Address
 }
 
@@ -28,7 +33,11 @@ func (msg OracleMsg) GetSigners() []sdk.Address {
 	return []sdk.Address{msg.Signer}
 }
 
-type Oracle interface {
+func (msg OracleMsg) GetSigner() sdk.Address {
+	return msg.Signer
+}
+
+type Payload interface {
 	Type() string
 	ValidateBasic() sdk.Error
 }

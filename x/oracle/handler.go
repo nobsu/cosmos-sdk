@@ -8,19 +8,20 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/stake"
 )
 
-type Handler func(ctx sdk.Context, o Oracle) sdk.Error
+type Handler func(ctx sdk.Context, p Payload) sdk.Error
 
-func (keeper Keeper) Handle(h Handler, ctx sdk.Context, msg OracleMsg) sdk.Result {
+func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o Oracle) sdk.Result {
 	sk := keeper.sk
 
+	signer := o.GetSigner()
+
 	// Check the signer is a validater
-	val, ok := getValidator(ctx, keeper.sk, msg.Signer)
+	val, ok := getValidator(ctx, keeper.sk, signer)
 	if !ok {
-		return ErrNotValidator(msg.Signer).Result()
+		return ErrNotValidator(signer).Result()
 	}
 
-	oracle := msg.Oracle
-	info := keeper.OracleInfo(ctx, oracle)
+	info := keeper.OracleInfo(ctx, o)
 
 	// Check the oracle is already processed
 	if info.Processed {
@@ -32,20 +33,20 @@ func (keeper Keeper) Handle(h Handler, ctx sdk.Context, msg OracleMsg) sdk.Resul
 
 	// Add the signer to signer queue
 	for _, s := range info.Signers {
-		if bytes.Equal(s, msg.Signer) {
+		if bytes.Equal(s, signer) {
 			return ErrAlreadySigned().Result()
 		}
 	}
-	info.Signers = append(info.Signers, msg.Signer)
+	info.Signers = append(info.Signers, signer)
 	info.Power = info.Power.Add(val.Power)
 
 	supermaj := sdk.NewRat(2, 3)
 	totalPower := sk.GetPool(ctx).BondedShares
 	if info.Power.GT(totalPower.Mul(supermaj)) { // TODO: make "2/3" modifiable
 		cctx, write := ctx.CacheContext()
-		err := h(cctx, oracle)
+		err := h(cctx, o)
 		info.Processed = true
-		keeper.setInfo(ctx, oracle, info)
+		keeper.setInfo(ctx, o, info)
 		if err != nil {
 			return sdk.Result{
 				Code: sdk.CodeOK,
@@ -55,7 +56,7 @@ func (keeper Keeper) Handle(h Handler, ctx sdk.Context, msg OracleMsg) sdk.Resul
 		write()
 		return sdk.Result{}
 	}
-	keeper.setInfo(ctx, oracle, info)
+	keeper.setInfo(ctx, o, info)
 	return sdk.Result{}
 }
 

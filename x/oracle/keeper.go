@@ -14,10 +14,11 @@ type Keeper struct {
 	sk stake.Keeper
 }
 
-func NewKeeper(key sdk.StoreKey, cdc *wire.Codec) Keeper {
+func NewKeeper(key sdk.StoreKey, cdc *wire.Codec, sk stake.Keeper) Keeper {
 	return Keeper{
 		key: key,
 		cdc: cdc,
+		sk:  sk,
 	}
 }
 
