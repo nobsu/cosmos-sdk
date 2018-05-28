@@ -6,9 +6,10 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
+// Handler handles payload after it passes voting process
 type Handler func(ctx sdk.Context, p Payload) sdk.Error
 
-func (keeper Keeper) update(ctx sdk.Context, val sdk.Validator, valset sdk.ValidatorSet, p Payload, info OracleInfo) OracleInfo {
+func (keeper Keeper) update(ctx sdk.Context, val sdk.Validator, valset sdk.ValidatorSet, p Payload, info Info) Info {
 	info.Power = info.Power.Add(val.GetPower())
 
 	supermaj := sdk.NewRat(2, 3)
@@ -19,11 +20,8 @@ func (keeper Keeper) update(ctx sdk.Context, val sdk.Validator, valset sdk.Valid
 
 	hash := ctx.BlockHeader().ValidatorsHash
 	if !bytes.Equal(hash, info.Hash) {
-		newinfo := OracleInfo{
-			Power:     sdk.ZeroRat(),
-			Hash:      hash,
-			Processed: false,
-		}
+		info.Power = sdk.ZeroRat()
+		info.Hash = hash
 		prefix := GetSignPrefix(p, keeper.cdc)
 		store := ctx.KVStore(keeper.key)
 		iter := sdk.KVStorePrefixIterator(store, prefix)
@@ -32,35 +30,43 @@ func (keeper Keeper) update(ctx sdk.Context, val sdk.Validator, valset sdk.Valid
 				store.Delete(iter.Key())
 				continue
 			}
-			newinfo.Power = newinfo.Power.Add(val.GetPower())
+			info.Power = info.Power.Add(val.GetPower())
 		}
-		if newinfo.Power.GT(totalPower.Mul(supermaj)) {
-			newinfo.Processed = true
+		if !info.Power.GT(totalPower.Mul(supermaj)) {
+			return info
 		}
-		return newinfo
 	}
 
-	info.Processed = true
+	info.Status = Processed
 	return info
 }
 
-func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o OracleMsg, codespace sdk.CodespaceType) sdk.Result {
+// Handle is used by other modules to handle Msg
+func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o Msg, codespace sdk.CodespaceType) sdk.Result {
 	valset := keeper.valset
 
 	signer := o.Signer
 	payload := o.Payload
 
+	// Check the oracle is not in process
+	info := keeper.Info(ctx, payload)
+	if info.Status != Pending {
+		return ErrAlreadyProcessed(codespace).Result()
+	}
+
+	// Check if it is reporting timeout
+	now := ctx.BlockHeight()
+	if now > info.LastSigned+100 {
+		info = Info{Status: Timeout}
+		keeper.setInfo(ctx, payload, info)
+		keeper.clearSigns(ctx, payload)
+		return sdk.Result{}
+	}
+
 	// Check the signer is a validater
 	val := valset.Validator(ctx, signer)
 	if val == nil {
 		return ErrNotValidator(codespace, signer).Result()
-	}
-
-	info := keeper.OracleInfo(ctx, payload)
-
-	// Check the oracle is already processed
-	if info.Processed {
-		return ErrAlreadyProcessed(codespace).Result()
 	}
 
 	// Check double signing
@@ -71,13 +77,13 @@ func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o OracleMsg, codespace s
 	keeper.sign(ctx, payload, signer)
 
 	info = keeper.update(ctx, val, valset, payload, info)
-	if info.Processed {
-		info = OracleInfo{Processed: true}
+	if info.Status == Processed {
+		info = Info{Status: Processed}
 	}
 
 	keeper.setInfo(ctx, payload, info)
 
-	if info.Processed {
+	if info.Status == Processed {
 		keeper.clearSigns(ctx, payload)
 		cctx, write := ctx.CacheContext()
 		err := h(cctx, payload)

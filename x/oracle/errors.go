@@ -4,8 +4,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
+// Oracle errors reserve 1101-1199
 const (
-	// Oracle errors reserve 1101-1199
 	CodeNotValidator     sdk.CodeType = 1101
 	CodeAlreadyProcessed sdk.CodeType = 1102
 	CodeAlreadySigned    sdk.CodeType = 1103
@@ -25,14 +25,20 @@ func codeToDefaultMsg(code sdk.CodeType) string {
 	}
 }
 
+// ----------------------------------------
+// Error constructors
+
+// ErrNotValidator called when the signer of a Msg is not a validator
 func ErrNotValidator(codespace sdk.CodespaceType, address sdk.Address) sdk.Error {
 	return newError(codespace, CodeNotValidator, address.String())
 }
 
+// ErrAlreadyProcessed called when a payload is already processed
 func ErrAlreadyProcessed(codespace sdk.CodespaceType) sdk.Error {
 	return newError(codespace, CodeAlreadyProcessed, "")
 }
 
+// ErrAlreadySigned called when the signer is trying to double signing
 func ErrAlreadySigned(codespace sdk.CodespaceType) sdk.Error {
 	return newError(codespace, CodeAlreadySigned, "")
 }
@@ -48,7 +54,6 @@ func newError(codespace sdk.CodespaceType, code sdk.CodeType, msg string) sdk.Er
 func msgOrDefaultMsg(msg string, code sdk.CodeType) string {
 	if msg != "" {
 		return msg
-	} else {
-		return codeToDefaultMsg(code)
 	}
+	return codeToDefaultMsg(code)
 }

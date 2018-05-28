@@ -6,6 +6,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
+// Keeper of the oracle store
 type Keeper struct {
 	key sdk.StoreKey
 	cdc *wire.Codec
@@ -13,6 +14,7 @@ type Keeper struct {
 	valset sdk.ValidatorSet
 }
 
+// NewKeeper constructs a new keeper
 func NewKeeper(key sdk.StoreKey, cdc *wire.Codec, valset sdk.ValidatorSet) Keeper {
 	return Keeper{
 		key: key,
@@ -22,21 +24,36 @@ func NewKeeper(key sdk.StoreKey, cdc *wire.Codec, valset sdk.ValidatorSet) Keepe
 	}
 }
 
-type OracleInfo struct {
-	Power     sdk.Rat
-	Hash      []byte
-	Processed bool
+// InfoStatus - current status of an Info
+type InfoStatus int8
+
+// Define InfoStatus
+const (
+	Pending = InfoStatus(iota)
+	Processed
+	Timeout
+)
+
+// Info for each payload
+type Info struct {
+	Power      sdk.Rat
+	Hash       []byte
+	LastSigned int64
+	Status     InfoStatus
 }
 
-func EmptyOracleInfo(ctx sdk.Context) OracleInfo {
-	return OracleInfo{
-		Power:     sdk.ZeroRat(),
-		Hash:      ctx.BlockHeader().ValidatorsHash,
-		Processed: false,
+// EmptyInfo construct an empty Info
+func EmptyInfo(ctx sdk.Context) Info {
+	return Info{
+		Power:      sdk.ZeroRat(),
+		Hash:       ctx.BlockHeader().ValidatorsHash,
+		LastSigned: ctx.BlockHeight(),
+		Status:     Pending,
 	}
 }
 
-func (keeper Keeper) OracleInfo(ctx sdk.Context, p Payload) (res OracleInfo) {
+// Info returns the information about a payload
+func (keeper Keeper) Info(ctx sdk.Context, p Payload) (res Info) {
 	store := ctx.KVStore(keeper.key)
 
 	key := GetInfoKey(p, keeper.cdc)
@@ -44,7 +61,7 @@ func (keeper Keeper) OracleInfo(ctx sdk.Context, p Payload) (res OracleInfo) {
 	bz := store.Get(key)
 
 	if bz == nil {
-		return EmptyOracleInfo(ctx)
+		return EmptyInfo(ctx)
 	}
 
 	keeper.cdc.MustUnmarshalBinary(bz, &res)
@@ -52,7 +69,7 @@ func (keeper Keeper) OracleInfo(ctx sdk.Context, p Payload) (res OracleInfo) {
 	return
 }
 
-func (keeper Keeper) setInfo(ctx sdk.Context, p Payload, info OracleInfo) {
+func (keeper Keeper) setInfo(ctx sdk.Context, p Payload, info Info) {
 	store := ctx.KVStore(keeper.key)
 	key := GetInfoKey(p, keeper.cdc)
 	bz := keeper.cdc.MustMarshalBinary(info)

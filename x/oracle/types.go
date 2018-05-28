@@ -6,16 +6,19 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-type OracleMsg struct {
+// Msg - struct for voting on payloads
+type Msg struct {
 	Payload
 	Signer sdk.Address
 }
 
-func (msg OracleMsg) Get(key interface{}) interface{} {
+// Get implements sdk.Msg
+func (msg Msg) Get(key interface{}) interface{} {
 	return nil
 }
 
-func (msg OracleMsg) GetSignBytes() []byte {
+// GetSignBytes implements sdk.Msg
+func (msg Msg) GetSignBytes() []byte {
 	bz, err := json.Marshal(msg)
 	if err != nil {
 		panic(err)
@@ -23,10 +26,12 @@ func (msg OracleMsg) GetSignBytes() []byte {
 	return bz
 }
 
-func (msg OracleMsg) GetSigners() []sdk.Address {
+// GetSigners implements sdk.Msg
+func (msg Msg) GetSigners() []sdk.Address {
 	return []sdk.Address{msg.Signer}
 }
 
+// Payload defines inner data for actual execution
 type Payload interface {
 	Type() string
 	ValidateBasic() sdk.Error
