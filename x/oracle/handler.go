@@ -61,6 +61,7 @@ func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o Msg, codespace sdk.Cod
 		keeper.clearSigns(ctx, payload)
 		return sdk.Result{}
 	}
+	info.LastSigned = ctx.BlockHeight()
 
 	// Check the signer is a validater
 	val := valset.Validator(ctx, signer)
