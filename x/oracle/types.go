@@ -27,10 +27,6 @@ func (msg OracleMsg) GetSigners() []sdk.Address {
 	return []sdk.Address{msg.Signer}
 }
 
-func (msg OracleMsg) GetSigner() sdk.Address {
-	return msg.Signer
-}
-
 type Payload interface {
 	Type() string
 	ValidateBasic() sdk.Error

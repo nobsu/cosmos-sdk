@@ -46,7 +46,8 @@ func updateInfo(ctx sdk.Context, val sdk.Validator, valset sdk.ValidatorSet, inf
 func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o OracleMsg, codespace sdk.CodespaceType) sdk.Result {
 	valset := keeper.valset
 
-	signer := o.GetSigner()
+	signer := o.Signer
+	payload := o.Payload
 
 	// Check the signer is a validater
 	val := valset.Validator(ctx, signer)
@@ -54,7 +55,7 @@ func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o OracleMsg, codespace s
 		return ErrNotValidator(codespace, signer).Result()
 	}
 
-	info := keeper.OracleInfo(ctx, o.Payload)
+	info := keeper.OracleInfo(ctx, payload)
 
 	// Check the oracle is already processed
 	if info.Processed {
@@ -69,10 +70,15 @@ func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o OracleMsg, codespace s
 	}
 
 	info = updateInfo(ctx, val, valset, info)
-	keeper.setInfo(ctx, o.Payload, info)
+	if info.Processed {
+		info = OracleInfo{Processed: true}
+	}
+
+	keeper.setInfo(ctx, payload, info)
+
 	if info.Processed {
 		cctx, write := ctx.CacheContext()
-		err := h(cctx, o.Payload)
+		err := h(cctx, payload)
 		if err != nil {
 			return sdk.Result{
 				Code: sdk.ABCICodeOK,
@@ -80,6 +86,7 @@ func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o OracleMsg, codespace s
 			}
 		}
 		write()
+
 	}
 
 	return sdk.Result{}
