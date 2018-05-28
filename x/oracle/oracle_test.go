@@ -104,7 +104,7 @@ func makeCodec() *wire.Codec {
 	var cdc = wire.NewCodec()
 
 	cdc.RegisterInterface((*sdk.Msg)(nil), nil)
-	cdc.RegisterConcrete(OracleMsg{}, "test/Oracle", nil)
+	cdc.RegisterConcrete(Msg{}, "test/Oracle", nil)
 
 	cdc.RegisterInterface((*Payload)(nil), nil)
 	cdc.RegisterConcrete(seqOracle{}, "test/oracle/seqOracle", nil)
@@ -115,7 +115,7 @@ func makeCodec() *wire.Codec {
 func seqHandler(ork Keeper, key sdk.StoreKey, codespace sdk.CodespaceType) sdk.Handler {
 	return func(ctx sdk.Context, msg sdk.Msg) sdk.Result {
 		switch msg := msg.(type) {
-		case OracleMsg:
+		case Msg:
 			return ork.Handle(func(ctx sdk.Context, p Payload) sdk.Error {
 				switch p := p.(type) {
 				case seqOracle:
@@ -179,11 +179,11 @@ func TestOracle(t *testing.T) {
 	require.Nil(t, err)
 	ctx = ctx.WithBlockHeader(abci.Header{ValidatorsHash: bz})
 
-	ork := NewKeeper(okey, cdc, valset)
+	ork := NewKeeper(okey, cdc, valset, sdk.NewRat(2, 3), 100)
 	h := seqHandler(ork, key, sdk.CodespaceUndefined)
 
 	// Nonvalidator signed, transaction failed
-	msg := OracleMsg{seqOracle{0, 0}, []byte("randomguy")}
+	msg := Msg{seqOracle{0, 0}, []byte("randomguy")}
 	res := h(ctx, msg)
 	assert.False(t, res.IsOK())
 	assert.Equal(t, 0, getSequence(ctx, key))
@@ -212,7 +212,7 @@ func TestOracle(t *testing.T) {
 	assert.Equal(t, 1, getSequence(ctx, key))
 
 	// Less than 2/3 signed, msg not processed
-	msg = OracleMsg{seqOracle{100, 1}, addr1}
+	msg = Msg{seqOracle{100, 1}, addr1}
 	res = h(ctx, msg)
 	assert.True(t, res.IsOK())
 	assert.Equal(t, 1, getSequence(ctx, key))
@@ -237,7 +237,7 @@ func TestOracle(t *testing.T) {
 	ctx = ctx.WithBlockHeader(abci.Header{ValidatorsHash: bz})
 
 	// Less than 2/3 signed, msg not processed
-	msg = OracleMsg{seqOracle{1, 2}, addr1}
+	msg = Msg{seqOracle{1, 2}, addr1}
 	res = h(ctx, msg)
 	assert.True(t, res.IsOK())
 	assert.Equal(t, 1, getSequence(ctx, key))
@@ -255,7 +255,7 @@ func TestOracle(t *testing.T) {
 	assert.Equal(t, 2, getSequence(ctx, key))
 
 	// Should handle validator set change while oracle process is happening
-	msg = OracleMsg{seqOracle{2, 3}, addr4}
+	msg = Msg{seqOracle{2, 3}, addr4}
 
 	// Less than 2/3 signed, msg not processed
 	res = h(ctx, msg)

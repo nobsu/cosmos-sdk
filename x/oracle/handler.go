@@ -12,9 +12,8 @@ type Handler func(ctx sdk.Context, p Payload) sdk.Error
 func (keeper Keeper) update(ctx sdk.Context, val sdk.Validator, valset sdk.ValidatorSet, p Payload, info Info) Info {
 	info.Power = info.Power.Add(val.GetPower())
 
-	supermaj := sdk.NewRat(2, 3)
 	totalPower := valset.TotalPower(ctx)
-	if !info.Power.GT(totalPower.Mul(supermaj)) {
+	if !info.Power.GT(totalPower.Mul(keeper.supermaj)) {
 		return info
 	}
 
@@ -32,7 +31,7 @@ func (keeper Keeper) update(ctx sdk.Context, val sdk.Validator, valset sdk.Valid
 			}
 			info.Power = info.Power.Add(val.GetPower())
 		}
-		if !info.Power.GT(totalPower.Mul(supermaj)) {
+		if !info.Power.GT(totalPower.Mul(keeper.supermaj)) {
 			return info
 		}
 	}
@@ -56,7 +55,7 @@ func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o Msg, codespace sdk.Cod
 
 	// Check if it is reporting timeout
 	now := ctx.BlockHeight()
-	if now > info.LastSigned+100 {
+	if now > info.LastSigned+keeper.timeout {
 		info = Info{Status: Timeout}
 		keeper.setInfo(ctx, payload, info)
 		keeper.clearSigns(ctx, payload)
