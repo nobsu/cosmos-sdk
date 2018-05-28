@@ -1,20 +1,19 @@
 package oracle
 
 import (
+	"bytes"
 	"testing"
 
-	//"github.com/stretchr/testify/assert"
-	//"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 
 	abci "github.com/tendermint/abci/types"
 	dbm "github.com/tendermint/tmlibs/db"
 
+	"github.com/tendermint/go-crypto"
+
 	"github.com/cosmos/cosmos-sdk/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/wire"
-	"github.com/cosmos/cosmos-sdk/x/auth"
-	"github.com/cosmos/cosmos-sdk/x/bank"
-	//"github.com/cosmos/cosmos-sdk/x/stake"
 )
 
 func defaultContext(keys ...sdk.StoreKey) sdk.Context {
@@ -24,12 +23,71 @@ func defaultContext(keys ...sdk.StoreKey) sdk.Context {
 		cms.MountStoreWithDB(key, sdk.StoreTypeIAVL, db)
 	}
 	cms.LoadLatestVersion()
-	ctx := sdk.NewContext(cms, abci.Header{}, false, nil)
+	ctx := sdk.NewContext(cms, abci.Header{}, false, nil, nil)
 	return ctx
 }
 
+type validator struct {
+	address sdk.Address
+	power   sdk.Rat
+}
+
+func (v validator) GetStatus() sdk.BondStatus {
+	return sdk.Bonded
+}
+
+func (v validator) GetOwner() sdk.Address {
+	return v.address
+}
+
+func (v validator) GetPubKey() crypto.PubKey {
+	return nil
+}
+
+func (v validator) GetPower() sdk.Rat {
+	return v.power
+}
+
+func (v validator) GetBondHeight() int64 {
+	return 0
+}
+
+type validatorSet struct {
+	validators []validator
+}
+
+func (vs *validatorSet) IterateValidators(ctx sdk.Context, fn func(index int64, validator sdk.Validator) bool) {
+	for i, val := range vs.validators {
+		if fn(int64(i), val) {
+			break
+		}
+	}
+}
+
+func (vs *validatorSet) IterateValidatorsBonded(ctx sdk.Context, fn func(index int64, validator sdk.Validator) bool) {
+	vs.IterateValidators(ctx, fn)
+}
+
+func (vs *validatorSet) Validator(ctx sdk.Context, addr sdk.Address) sdk.Validator {
+	for _, val := range vs.validators {
+		if bytes.Equal(val.address, addr) {
+			return val
+		}
+	}
+	return nil
+}
+
+func (vs *validatorSet) TotalPower(ctx sdk.Context) sdk.Rat {
+	res := sdk.ZeroRat()
+	for _, val := range vs.validators {
+		res = res.Add(val.power)
+	}
+	return res
+}
+
 type seqOracle struct {
-	seq int
+	Seq   int
+	Nonce int
 }
 
 func (o seqOracle) Type() string {
@@ -46,13 +104,13 @@ func makeCodec() *wire.Codec {
 	cdc.RegisterInterface((*sdk.Msg)(nil), nil)
 	cdc.RegisterConcrete(OracleMsg{}, "test/Oracle", nil)
 
-	cdc.RegisterInterface((*Oracle)(nil), nil)
+	cdc.RegisterInterface((*Payload)(nil), nil)
 	cdc.RegisterConcrete(seqOracle{}, "test/oracle/seqOracle", nil)
 
 	return cdc
 }
 
-func seqHandler(ork Keeper, key sdk.StoreKey) sdk.Handler {
+func seqHandler(ork Keeper, key sdk.StoreKey, codespace sdk.CodespaceType) sdk.Handler {
 	return func(ctx sdk.Context, msg sdk.Msg) sdk.Result {
 		switch msg := msg.(type) {
 		case OracleMsg:
@@ -63,33 +121,36 @@ func seqHandler(ork Keeper, key sdk.StoreKey) sdk.Handler {
 				default:
 					return sdk.ErrUnknownRequest("")
 				}
-			}, ctx, msg)
+			}, ctx, msg, codespace)
 		default:
 			return sdk.ErrUnknownRequest("").Result()
 		}
 	}
 }
 
-func handleSeqOracle(ctx sdk.Context, key sdk.StoreKey, o seqOracle) sdk.Error {
+func getSequence(ctx sdk.Context, key sdk.StoreKey) int {
 	store := ctx.KVStore(key)
-	cdc := makeCodec()
-
 	seqbz := store.Get([]byte("seq"))
 
 	var seq int
 	if seqbz == nil {
 		seq = 0
 	} else {
-		if err := cdc.UnmarshalBinary(seqbz, &seq); err != nil {
-			return sdk.NewError(1, "")
-		}
+		wire.NewCodec().MustUnmarshalBinary(seqbz, &seq)
 	}
 
-	if seq != o.seq {
-		return sdk.NewError(1, "")
+	return seq
+}
+
+func handleSeqOracle(ctx sdk.Context, key sdk.StoreKey, o seqOracle) sdk.Error {
+	store := ctx.KVStore(key)
+
+	seq := getSequence(ctx, key)
+	if seq != o.Seq {
+		return sdk.NewError(sdk.CodespaceUndefined, 1, "")
 	}
 
-	bz, _ := cdc.MarshalBinary(seq + 1)
+	bz := wire.NewCodec().MustMarshalBinary(seq + 1)
 	store.Set([]byte("seq"), bz)
 
 	return nil
@@ -98,40 +159,112 @@ func handleSeqOracle(ctx sdk.Context, key sdk.StoreKey, o seqOracle) sdk.Error {
 func TestOracle(t *testing.T) {
 	cdc := makeCodec()
 
-	addrs := []sdk.Address{[]byte("0"), []byte("1"), []byte("2")}
+	addr1 := []byte("addr1")
+	addr2 := []byte("addr2")
+	addr3 := []byte("addr3")
+	addr4 := []byte("addr4")
+	valset := &validatorSet{[]validator{
+		validator{addr1, sdk.NewRat(7)},
+		validator{addr2, sdk.NewRat(7)},
+		validator{addr3, sdk.NewRat(1)},
+	}}
 
-	akey := sdk.NewKVStoreKey("auth")
-	skey := sdk.NewKVStoreKey("stake")
 	okey := sdk.NewKVStoreKey("oracle")
 	key := sdk.NewKVStoreKey("key")
-	ctx := defaultContext(skey, okey, key)
+	ctx := defaultContext(okey, key)
 
-	am := auth.NewAccountMapper(cdc, akey, &auth.BaseAccount{})
+	ork := NewKeeper(okey, cdc, valset)
+	h := seqHandler(ork, key, sdk.CodespaceUndefined)
 
-	ck := bank.NewCoinKeeper(am)
-	ck.AddCoins(ctx, addrs[0], sdk.Coins{{"fermion", 7}})
-	ck.AddCoins(ctx, addrs[1], sdk.Coins{{"fermion", 7}})
-	ck.AddCoins(ctx, addrs[2], sdk.Coins{{"fermion", 1}})
-	/*
-		sk := stake.NewKeeper(ctx, cdc, skey, ck)
-		c0 := stake.Candidate{
-			Address: sdk.Address(addrs[0]),
-			Assets:  sdk.NewRat(7),
-		}
-		c1 := stake.Candidate{
-			Address: sdk.Address(addrs[1]),
-			Assets:  sdk.NewRat(7),
-		}
-		c2 := stake.Candidate{
-			Address: sdk.Address(addrs[2]),
-			Assets:  sdk.NewRat(1),
-		}
-			sk.setCandidate(ctx, c1)
-			sk.setCandidate(ctx, c2)
-			sk.setCandidate(ctx, c3)
-	*/
+	// Nonvalidator signed, transaction failed
+	msg := OracleMsg{seqOracle{0, 0}, []byte("randomguy")}
+	res := h(ctx, msg)
+	assert.False(t, res.IsOK())
+	assert.Equal(t, 0, getSequence(ctx, key))
 
-	//ork := NewKeeper(okey, cdc, sk)
+	// Less than 2/3 signed, msg not processed
+	msg.Signer = addr1
+	res = h(ctx, msg)
+	assert.True(t, res.IsOK())
+	assert.Equal(t, 0, getSequence(ctx, key))
 
-	//h := seqHandler(ork, key)
+	// Double signed, transaction failed
+	res = h(ctx, msg)
+	assert.False(t, res.IsOK())
+	assert.Equal(t, 0, getSequence(ctx, key))
+
+	// More than 2/3 signed, msg processed
+	msg.Signer = addr2
+	res = h(ctx, msg)
+	assert.True(t, res.IsOK())
+	assert.Equal(t, 1, getSequence(ctx, key))
+
+	// Already processed, transaction failed
+	msg.Signer = addr3
+	res = h(ctx, msg)
+	assert.False(t, res.IsOK())
+	assert.Equal(t, 1, getSequence(ctx, key))
+
+	// Less than 2/3 signed, msg not processed
+	msg = OracleMsg{seqOracle{100, 1}, addr1}
+	res = h(ctx, msg)
+	assert.True(t, res.IsOK())
+	assert.Equal(t, 1, getSequence(ctx, key))
+
+	// More than 2/3 signed but payload is invalid
+	msg.Signer = addr2
+	res = h(ctx, msg)
+	assert.True(t, res.IsOK())
+	assert.NotEqual(t, "", res.Log)
+	assert.Equal(t, 1, getSequence(ctx, key))
+
+	// Already processed, transaction failed
+	msg.Signer = addr3
+	res = h(ctx, msg)
+	assert.False(t, res.IsOK())
+	assert.Equal(t, 1, getSequence(ctx, key))
+
+	// Should handle validator set change
+	valset.validators = append(valset.validators, validator{addr4, sdk.NewRat(12)})
+
+	// Less than 2/3 signed, msg not processed
+	msg = OracleMsg{seqOracle{1, 2}, addr1}
+	res = h(ctx, msg)
+	assert.True(t, res.IsOK())
+	assert.Equal(t, 1, getSequence(ctx, key))
+
+	// Less than 2/3 signed, msg not processed
+	msg.Signer = addr2
+	res = h(ctx, msg)
+	assert.True(t, res.IsOK())
+	assert.Equal(t, 1, getSequence(ctx, key))
+
+	// More than 2/3 signed, msg processed
+	msg.Signer = addr4
+	res = h(ctx, msg)
+	assert.True(t, res.IsOK())
+	assert.Equal(t, 2, getSequence(ctx, key))
+
+	// Should handle validator set change while oracle process is happening
+	msg = OracleMsg{seqOracle{2, 3}, addr4}
+
+	// Less than 2/3 signed, msg not processed
+	res = h(ctx, msg)
+	assert.True(t, res.IsOK())
+	assert.Equal(t, 2, getSequence(ctx, key))
+
+	// Signed validator is kicked out
+	valset.validators = valset.validators[:len(valset.validators)-1]
+
+	// Less than 2/3 signed, msg not processed
+	msg.Signer = addr1
+	res = h(ctx, msg)
+	assert.True(t, res.IsOK())
+	assert.Equal(t, 2, getSequence(ctx, key))
+
+	// More than 2/3 signed, msg processed
+	msg.Signer = addr2
+	res = h(ctx, msg)
+	assert.True(t, res.IsOK())
+	assert.Equal(t, 3, getSequence(ctx, key))
 }

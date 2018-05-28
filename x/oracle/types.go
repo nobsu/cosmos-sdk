@@ -6,12 +6,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-// implements sdk.Msg
-type Oracle interface {
-	Payload
-	GetSigner() sdk.Address
-}
-
 type OracleMsg struct {
 	Payload
 	Signer sdk.Address

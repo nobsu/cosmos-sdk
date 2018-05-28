@@ -4,21 +4,21 @@ import (
 	"github.com/cosmos/cosmos-sdk/wire"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/stake"
 )
 
 type Keeper struct {
 	key sdk.StoreKey
 	cdc *wire.Codec
 
-	sk stake.Keeper
+	valset sdk.ValidatorSet
 }
 
-func NewKeeper(key sdk.StoreKey, cdc *wire.Codec, sk stake.Keeper) Keeper {
+func NewKeeper(key sdk.StoreKey, cdc *wire.Codec, valset sdk.ValidatorSet) Keeper {
 	return Keeper{
 		key: key,
 		cdc: cdc,
-		sk:  sk,
+
+		valset: valset,
 	}
 }
 
@@ -29,43 +29,36 @@ type OracleInfo struct {
 	Processed bool
 }
 
-func (keeper Keeper) OracleInfo(ctx sdk.Context, oracle Oracle) (res OracleInfo) {
+func EmptyOracleInfo() OracleInfo {
+	return OracleInfo{
+		Signers:   []sdk.Address{},
+		Power:     sdk.ZeroRat(),
+		Processed: false,
+	}
+}
+
+func (keeper Keeper) OracleInfo(ctx sdk.Context, p Payload) (res OracleInfo) {
 	store := ctx.KVStore(keeper.key)
 
-	key, err := keeper.cdc.MarshalBinary(oracle)
-	if err != nil {
-		panic(err)
-	}
+	key := GetInfoKey(p, keeper.cdc)
 
 	bz := store.Get(key)
 
 	if bz == nil {
-		return OracleInfo{
-			Signers:   []sdk.Address{},
-			Power:     sdk.ZeroRat,
-			Processed: false,
-		}
+		return EmptyOracleInfo()
 	}
 
-	if err = keeper.cdc.UnmarshalBinary(bz, &res); err != nil {
-		panic(err)
-	}
+	keeper.cdc.MustUnmarshalBinary(bz, &res)
 
 	return
 }
 
-func (keeper Keeper) setInfo(ctx sdk.Context, oracle Oracle, info OracleInfo) {
+func (keeper Keeper) setInfo(ctx sdk.Context, p Payload, info OracleInfo) {
 	store := ctx.KVStore(keeper.key)
 
-	k, err := keeper.cdc.MarshalBinary(oracle)
-	if err != nil {
-		panic(err)
-	}
+	key := GetInfoKey(p, keeper.cdc)
 
-	v, err := keeper.cdc.MarshalBinary(info)
-	if err != nil {
-		panic(err)
-	}
+	bz := keeper.cdc.MustMarshalBinary(info)
 
-	store.Set(k, v)
+	store.Set(key, bz)
 }

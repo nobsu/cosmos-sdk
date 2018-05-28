@@ -25,24 +25,24 @@ func codeToDefaultMsg(code sdk.CodeType) string {
 	}
 }
 
-func ErrNotValidator(address sdk.Address) sdk.Error {
-	return newError(CodeNotValidator, address.String())
+func ErrNotValidator(codespace sdk.CodespaceType, address sdk.Address) sdk.Error {
+	return newError(codespace, CodeNotValidator, address.String())
 }
 
-func ErrAlreadyProcessed() sdk.Error {
-	return newError(CodeAlreadyProcessed, "")
+func ErrAlreadyProcessed(codespace sdk.CodespaceType) sdk.Error {
+	return newError(codespace, CodeAlreadyProcessed, "")
 }
 
-func ErrAlreadySigned() sdk.Error {
-	return newError(CodeAlreadySigned, "")
+func ErrAlreadySigned(codespace sdk.CodespaceType) sdk.Error {
+	return newError(codespace, CodeAlreadySigned, "")
 }
 
 // -------------------------
 // Helpers
 
-func newError(code sdk.CodeType, msg string) sdk.Error {
+func newError(codespace sdk.CodespaceType, code sdk.CodeType, msg string) sdk.Error {
 	msg = msgOrDefaultMsg(msg, code)
-	return sdk.NewError(code, msg)
+	return sdk.NewError(codespace, code, msg)
 }
 
 func msgOrDefaultMsg(msg string, code sdk.CodeType) string {

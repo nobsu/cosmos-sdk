@@ -4,68 +4,63 @@ import (
 	"bytes"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-
-	"github.com/cosmos/cosmos-sdk/x/stake"
 )
 
 type Handler func(ctx sdk.Context, p Payload) sdk.Error
 
-func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o Oracle) sdk.Result {
-	sk := keeper.sk
+func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o OracleMsg, codespace sdk.CodespaceType) sdk.Result {
+	valset := keeper.valset
 
 	signer := o.GetSigner()
 
 	// Check the signer is a validater
-	val, ok := getValidator(ctx, keeper.sk, signer)
-	if !ok {
-		return ErrNotValidator(signer).Result()
+	val := valset.Validator(ctx, signer)
+	if val == nil {
+		return ErrNotValidator(codespace, signer).Result()
 	}
 
-	info := keeper.OracleInfo(ctx, o)
+	info := keeper.OracleInfo(ctx, o.Payload)
 
 	// Check the oracle is already processed
 	if info.Processed {
-		return ErrAlreadyProcessed().Result()
+		return ErrAlreadyProcessed(codespace).Result()
 	}
-
-	// TODO: implement valset change later
-	// Check if the valset hash is remaining same
 
 	// Add the signer to signer queue
 	for _, s := range info.Signers {
 		if bytes.Equal(s, signer) {
-			return ErrAlreadySigned().Result()
+			return ErrAlreadySigned(codespace).Result()
 		}
 	}
 	info.Signers = append(info.Signers, signer)
-	info.Power = info.Power.Add(val.Power)
+	info.Power = info.Power.Add(val.GetPower())
 
 	supermaj := sdk.NewRat(2, 3)
-	totalPower := sk.GetPool(ctx).BondedShares
+	totalPower := valset.TotalPower(ctx)
 	if info.Power.GT(totalPower.Mul(supermaj)) { // TODO: make "2/3" modifiable
-		cctx, write := ctx.CacheContext()
-		err := h(cctx, o)
-		info.Processed = true
-		keeper.setInfo(ctx, o, info)
-		if err != nil {
-			return sdk.Result{
-				Code: sdk.CodeOK,
-				Log:  err.ABCILog(),
+		newinfo := EmptyOracleInfo()
+		for _, s := range info.Signers {
+			val := valset.Validator(ctx, s)
+			if val != nil {
+				newinfo.Signers = append(newinfo.Signers, val.GetOwner())
+				newinfo.Power = newinfo.Power.Add(val.GetPower())
 			}
 		}
-		write()
-		return sdk.Result{}
-	}
-	keeper.setInfo(ctx, o, info)
-	return sdk.Result{}
-}
-
-func getValidator(ctx sdk.Context, sk stake.Keeper, addr sdk.Address) (stake.Validator, bool) {
-	valset := sk.GetValidators(ctx)
-	for _, val := range valset {
-		if bytes.Equal(val.Address, addr) {
-			return val, true
+		if newinfo.Power.GT(totalPower.Mul(supermaj)) {
+			newinfo.Processed = true
+			keeper.setInfo(ctx, o.Payload, newinfo)
+			cctx, write := ctx.CacheContext()
+			err := h(cctx, o.Payload)
+			if err != nil {
+				return sdk.Result{
+					Code: sdk.ABCICodeOK,
+					Log:  err.ABCILog(),
+				}
+			}
+			write()
+			return sdk.Result{}
 		}
 	}
-	return stake.Validator{}, false
+	keeper.setInfo(ctx, o.Payload, info)
+	return sdk.Result{}
 }
