@@ -23,7 +23,6 @@ func NewKeeper(key sdk.StoreKey, cdc *wire.Codec, valset sdk.ValidatorSet) Keepe
 }
 
 type OracleInfo struct {
-	// ValidatorsHash []byte
 	Power     sdk.Rat
 	Hash      []byte
 	Processed bool
@@ -62,21 +61,22 @@ func (keeper Keeper) setInfo(ctx sdk.Context, p Payload, info OracleInfo) {
 
 func (keeper Keeper) sign(ctx sdk.Context, p Payload, signer sdk.Address) {
 	store := ctx.KVStore(keeper.key)
-	key := GetIsSignedKey(p, signer, keeper.cdc)
-	store.Set(key, []byte{0x01})
+	key := GetSignKey(p, signer, keeper.cdc)
+	store.Set(key, signer)
 }
 
 func (keeper Keeper) signed(ctx sdk.Context, p Payload, signer sdk.Address) bool {
 	store := ctx.KVStore(keeper.key)
-	key := GetIsSignedKey(p, signer, keeper.cdc)
+	key := GetSignKey(p, signer, keeper.cdc)
 	return store.Has(key)
 }
 
 func (keeper Keeper) clearSigns(ctx sdk.Context, p Payload) {
 	store := ctx.KVStore(keeper.key)
-	prefix := GetIsSignedPrefix(p, keeper.cdc)
+	prefix := GetSignPrefix(p, keeper.cdc)
 
-	for iter := sdk.KVStorePrefixIterator(store, prefix); iter.Valid(); iter.Next() {
+	iter := sdk.KVStorePrefixIterator(store, prefix)
+	for ; iter.Valid(); iter.Next() {
 		store.Delete(iter.Key())
 	}
 	iter.Close()

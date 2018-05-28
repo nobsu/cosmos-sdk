@@ -8,8 +8,7 @@ import (
 
 type Handler func(ctx sdk.Context, p Payload) sdk.Error
 
-func updateInfo(ctx sdk.Context, val sdk.Validator, valset sdk.ValidatorSet, info OracleInfo) OracleInfo {
-	info.Signers = append(info.Signers, val.GetOwner())
+func (keeper Keeper) update(ctx sdk.Context, val sdk.Validator, valset sdk.ValidatorSet, p Payload, info OracleInfo) OracleInfo {
 	info.Power = info.Power.Add(val.GetPower())
 
 	supermaj := sdk.NewRat(2, 3)
@@ -21,17 +20,19 @@ func updateInfo(ctx sdk.Context, val sdk.Validator, valset sdk.ValidatorSet, inf
 	hash := ctx.BlockHeader().ValidatorsHash
 	if !bytes.Equal(hash, info.Hash) {
 		newinfo := OracleInfo{
-			Signers:   []sdk.Address{},
 			Power:     sdk.ZeroRat(),
 			Hash:      hash,
 			Processed: false,
 		}
-		for _, s := range info.Signers {
-			val := valset.Validator(ctx, s)
-			if val != nil {
-				newinfo.Signers = append(newinfo.Signers, val.GetOwner())
-				newinfo.Power = newinfo.Power.Add(val.GetPower())
+		prefix := GetSignPrefix(p, keeper.cdc)
+		store := ctx.KVStore(keeper.key)
+		iter := sdk.KVStorePrefixIterator(store, prefix)
+		for ; iter.Valid(); iter.Next() {
+			if valset.Validator(ctx, iter.Value()) != nil {
+				store.Delete(iter.Key())
+				continue
 			}
+			newinfo.Power = newinfo.Power.Add(val.GetPower())
 		}
 		if newinfo.Power.GT(totalPower.Mul(supermaj)) {
 			newinfo.Processed = true
@@ -62,14 +63,14 @@ func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o OracleMsg, codespace s
 		return ErrAlreadyProcessed(codespace).Result()
 	}
 
-	// Add the signer to signer queue
-	for _, s := range info.Signers {
-		if bytes.Equal(s, signer) {
-			return ErrAlreadySigned(codespace).Result()
-		}
+	// Check double signing
+	if keeper.signed(ctx, payload, signer) {
+		return ErrAlreadySigned(codespace).Result()
 	}
 
-	info = updateInfo(ctx, val, valset, info)
+	keeper.sign(ctx, payload, signer)
+
+	info = keeper.update(ctx, val, valset, payload, info)
 	if info.Processed {
 		info = OracleInfo{Processed: true}
 	}
@@ -77,6 +78,7 @@ func (keeper Keeper) Handle(h Handler, ctx sdk.Context, o OracleMsg, codespace s
 	keeper.setInfo(ctx, payload, info)
 
 	if info.Processed {
+		keeper.clearSigns(ctx, payload)
 		cctx, write := ctx.CacheContext()
 		err := h(cctx, payload)
 		if err != nil {
