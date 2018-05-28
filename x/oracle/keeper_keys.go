@@ -9,6 +9,6 @@ func GetInfoKey(p Payload, cdc *wire.Codec) []byte {
 	return append([]byte{0x00}, bz...)
 }
 
-func GetValidatorSetHashKey() []byte {
+func GetValidatorsHashKey() []byte {
 	return []byte{0x01}
 }

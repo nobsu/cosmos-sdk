@@ -26,13 +26,15 @@ type OracleInfo struct {
 	// ValidatorsHash []byte
 	Signers   []sdk.Address
 	Power     sdk.Rat
+	Hash      []byte
 	Processed bool
 }
 
-func EmptyOracleInfo() OracleInfo {
+func EmptyOracleInfo(ctx sdk.Context) OracleInfo {
 	return OracleInfo{
 		Signers:   []sdk.Address{},
 		Power:     sdk.ZeroRat(),
+		Hash:      ctx.BlockHeader().ValidatorsHash,
 		Processed: false,
 	}
 }
@@ -45,7 +47,7 @@ func (keeper Keeper) OracleInfo(ctx sdk.Context, p Payload) (res OracleInfo) {
 	bz := store.Get(key)
 
 	if bz == nil {
-		return EmptyOracleInfo()
+		return EmptyOracleInfo(ctx)
 	}
 
 	keeper.cdc.MustUnmarshalBinary(bz, &res)

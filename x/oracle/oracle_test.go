@@ -2,9 +2,11 @@ package oracle
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	abci "github.com/tendermint/abci/types"
 	dbm "github.com/tendermint/tmlibs/db"
@@ -28,8 +30,8 @@ func defaultContext(keys ...sdk.StoreKey) sdk.Context {
 }
 
 type validator struct {
-	address sdk.Address
-	power   sdk.Rat
+	Address sdk.Address
+	Power   sdk.Rat
 }
 
 func (v validator) GetStatus() sdk.BondStatus {
@@ -37,7 +39,7 @@ func (v validator) GetStatus() sdk.BondStatus {
 }
 
 func (v validator) GetOwner() sdk.Address {
-	return v.address
+	return v.Address
 }
 
 func (v validator) GetPubKey() crypto.PubKey {
@@ -45,7 +47,7 @@ func (v validator) GetPubKey() crypto.PubKey {
 }
 
 func (v validator) GetPower() sdk.Rat {
-	return v.power
+	return v.Power
 }
 
 func (v validator) GetBondHeight() int64 {
@@ -53,11 +55,11 @@ func (v validator) GetBondHeight() int64 {
 }
 
 type validatorSet struct {
-	validators []validator
+	Validators []validator
 }
 
 func (vs *validatorSet) IterateValidators(ctx sdk.Context, fn func(index int64, validator sdk.Validator) bool) {
-	for i, val := range vs.validators {
+	for i, val := range vs.Validators {
 		if fn(int64(i), val) {
 			break
 		}
@@ -69,8 +71,8 @@ func (vs *validatorSet) IterateValidatorsBonded(ctx sdk.Context, fn func(index i
 }
 
 func (vs *validatorSet) Validator(ctx sdk.Context, addr sdk.Address) sdk.Validator {
-	for _, val := range vs.validators {
-		if bytes.Equal(val.address, addr) {
+	for _, val := range vs.Validators {
+		if bytes.Equal(val.Address, addr) {
 			return val
 		}
 	}
@@ -79,8 +81,8 @@ func (vs *validatorSet) Validator(ctx sdk.Context, addr sdk.Address) sdk.Validat
 
 func (vs *validatorSet) TotalPower(ctx sdk.Context) sdk.Rat {
 	res := sdk.ZeroRat()
-	for _, val := range vs.validators {
-		res = res.Add(val.power)
+	for _, val := range vs.Validators {
+		res = res.Add(val.Power)
 	}
 	return res
 }
@@ -173,6 +175,10 @@ func TestOracle(t *testing.T) {
 	key := sdk.NewKVStoreKey("key")
 	ctx := defaultContext(okey, key)
 
+	bz, err := json.Marshal(valset)
+	require.Nil(t, err)
+	ctx = ctx.WithBlockHeader(abci.Header{ValidatorsHash: bz})
+
 	ork := NewKeeper(okey, cdc, valset)
 	h := seqHandler(ork, key, sdk.CodespaceUndefined)
 
@@ -225,7 +231,10 @@ func TestOracle(t *testing.T) {
 	assert.Equal(t, 1, getSequence(ctx, key))
 
 	// Should handle validator set change
-	valset.validators = append(valset.validators, validator{addr4, sdk.NewRat(12)})
+	valset.Validators = append(valset.Validators, validator{addr4, sdk.NewRat(12)})
+	bz, err = json.Marshal(valset)
+	require.Nil(t, err)
+	ctx = ctx.WithBlockHeader(abci.Header{ValidatorsHash: bz})
 
 	// Less than 2/3 signed, msg not processed
 	msg = OracleMsg{seqOracle{1, 2}, addr1}
@@ -254,7 +263,10 @@ func TestOracle(t *testing.T) {
 	assert.Equal(t, 2, getSequence(ctx, key))
 
 	// Signed validator is kicked out
-	valset.validators = valset.validators[:len(valset.validators)-1]
+	valset.Validators = valset.Validators[:len(valset.Validators)-1]
+	bz, err = json.Marshal(valset)
+	require.Nil(t, err)
+	ctx = ctx.WithBlockHeader(abci.Header{ValidatorsHash: bz})
 
 	// Less than 2/3 signed, msg not processed
 	msg.Signer = addr1
