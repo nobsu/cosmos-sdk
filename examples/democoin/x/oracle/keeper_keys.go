@@ -5,6 +5,11 @@ import (
 	"github.com/cosmos/cosmos-sdk/wire"
 )
 
+// TODO: keys could conflict with each other
+// since the user modules provide different codecs
+// so disamb bytes are not prefixed
+// prefix payload type before its marshalled bytes to fix it
+
 // GetInfoKey returns the key for OracleInfo
 func GetInfoKey(p Payload, cdc *wire.Codec) []byte {
 	bz := cdc.MustMarshalBinary(p)

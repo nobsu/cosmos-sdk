@@ -18,19 +18,21 @@ type Keeper struct {
 }
 
 // NewKeeper constructs a new keeper
-func NewKeeper(key sdk.StoreKey, cdc *wire.Codec, valset sdk.ValidatorSet, supermaj sdk.Rat, timeout int64) Keeper {
-	if timeout < 0 {
-		panic("Timeout should not be negative")
-	}
+func NewKeeperGen(key sdk.StoreKey, valset sdk.ValidatorSet) func(*wire.Codec, sdk.Rat, int64) Keeper {
+	return func(cdc *wire.Codec, supermaj sdk.Rat, timeout int64) Keeper {
+		if timeout < 0 {
+			panic("Timeout should not be negative")
+		}
 
-	return Keeper{
-		key: key,
-		cdc: cdc,
+		return Keeper{
+			key: key,
+			cdc: cdc,
 
-		valset: valset,
+			valset: valset,
 
-		supermaj: supermaj,
-		timeout:  timeout,
+			supermaj: supermaj,
+			timeout:  timeout,
+		}
 	}
 }
 

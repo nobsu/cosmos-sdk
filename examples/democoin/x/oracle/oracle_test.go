@@ -179,7 +179,8 @@ func TestOracle(t *testing.T) {
 	require.Nil(t, err)
 	ctx = ctx.WithBlockHeader(abci.Header{ValidatorsHash: bz})
 
-	ork := NewKeeper(okey, cdc, valset, sdk.NewRat(2, 3), 100)
+	orkGen := NewKeeperGen(okey, valset)
+	ork := orkGen(cdc, sdk.NewRat(2, 3), 100)
 	h := seqHandler(ork, key, sdk.CodespaceUndefined)
 
 	// Nonvalidator signed, transaction failed
