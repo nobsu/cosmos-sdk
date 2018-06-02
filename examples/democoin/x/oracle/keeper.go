@@ -17,8 +17,10 @@ type Keeper struct {
 	timeout  int64
 }
 
+type KeeperGen func(*wire.Codec, sdk.Rat, int64) Keeper
+
 // NewKeeper constructs a new keeper
-func NewKeeperGen(key sdk.StoreKey, valset sdk.ValidatorSet) func(*wire.Codec, sdk.Rat, int64) Keeper {
+func NewKeeperGen(key sdk.StoreKey, valset sdk.ValidatorSet) KeeperGen {
 	return func(cdc *wire.Codec, supermaj sdk.Rat, timeout int64) Keeper {
 		if timeout < 0 {
 			panic("Timeout should not be negative")
