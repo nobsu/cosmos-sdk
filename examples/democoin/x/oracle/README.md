@@ -15,7 +15,7 @@ type MyPayload struct {
 }
 ```
 
-When you write a payload, its `.Type()` should return same name with your module is registered on the router. It is because `oracle.Msg` inherits `.Type()` from its payload and it should be handled on the user modules.
+When you write a payload, its `.Type()` should return same name with your module is registered on the router. It is because `oracle.Msg` inherits `.Type()` from its embedded payload and it should be handled on the user modules.
 
 Then route every incoming `oracle.Msg` to `oracle.Keeper.Handler()` with the function that implements `oracle.Handler`.
 
@@ -35,8 +35,19 @@ func NewHandler(keeper Keeper) sdk.Handler {
 }
 ```
 
-In the previous example, the keeper has an `oracle.Keeper`. To store an `oracle.Keeper`, your `NewKeeper` has to receive an `oracle.KeeperGen`. `oracle.KeeperGen` is a function that takes configurations and returns a `oracle.Keeper`
+In the previous example, the keeper has an `oracle.Keeper`. To store an `oracle.Keeper`, your `NewKeeper` has to receive an `oracle.KeeperGen`. `oracle.KeeperGen` is a function that takes configurations and returns an `oracle.Keeper`
 
 ```go
-func NewKeeper(key sdk.StoreKey, )
+func NewKeeper(key sdk.StoreKey, cdc *wire.Codec, ogen oracle.KeeperGen) Keeper {
+    return Keeper {
+        cdc: cdc,
+        key: key,
+        // The oracle keeper will pass payload
+        // when more than 2/3 signed on it
+        // and will prune votes after 100 blocks from last sign
+        ork: ogen(cdc, sdk.NewRat(2, 3), 100),
+    }
+}
 ```
+
+Now the validators can send `oracle.Msg`s with `MyPayload` when they want to witness external events. 

@@ -1,7 +1,6 @@
 package oracle
 
 import (
-	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -11,8 +10,7 @@ import (
 	abci "github.com/tendermint/abci/types"
 	dbm "github.com/tendermint/tmlibs/db"
 
-	"github.com/tendermint/go-crypto"
-
+	"github.com/cosmos/cosmos-sdk/mock"
 	"github.com/cosmos/cosmos-sdk/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/wire"
@@ -27,64 +25,6 @@ func defaultContext(keys ...sdk.StoreKey) sdk.Context {
 	cms.LoadLatestVersion()
 	ctx := sdk.NewContext(cms, abci.Header{}, false, nil, nil)
 	return ctx
-}
-
-type validator struct {
-	Address sdk.Address
-	Power   sdk.Rat
-}
-
-func (v validator) GetStatus() sdk.BondStatus {
-	return sdk.Bonded
-}
-
-func (v validator) GetOwner() sdk.Address {
-	return v.Address
-}
-
-func (v validator) GetPubKey() crypto.PubKey {
-	return nil
-}
-
-func (v validator) GetPower() sdk.Rat {
-	return v.Power
-}
-
-func (v validator) GetBondHeight() int64 {
-	return 0
-}
-
-type validatorSet struct {
-	Validators []validator
-}
-
-func (vs *validatorSet) IterateValidators(ctx sdk.Context, fn func(index int64, validator sdk.Validator) bool) {
-	for i, val := range vs.Validators {
-		if fn(int64(i), val) {
-			break
-		}
-	}
-}
-
-func (vs *validatorSet) IterateValidatorsBonded(ctx sdk.Context, fn func(index int64, validator sdk.Validator) bool) {
-	vs.IterateValidators(ctx, fn)
-}
-
-func (vs *validatorSet) Validator(ctx sdk.Context, addr sdk.Address) sdk.Validator {
-	for _, val := range vs.Validators {
-		if bytes.Equal(val.Address, addr) {
-			return val
-		}
-	}
-	return nil
-}
-
-func (vs *validatorSet) TotalPower(ctx sdk.Context) sdk.Rat {
-	res := sdk.ZeroRat()
-	for _, val := range vs.Validators {
-		res = res.Add(val.Power)
-	}
-	return res
 }
 
 type seqOracle struct {
@@ -165,10 +105,10 @@ func TestOracle(t *testing.T) {
 	addr2 := []byte("addr2")
 	addr3 := []byte("addr3")
 	addr4 := []byte("addr4")
-	valset := &validatorSet{[]validator{
-		validator{addr1, sdk.NewRat(7)},
-		validator{addr2, sdk.NewRat(7)},
-		validator{addr3, sdk.NewRat(1)},
+	valset := &mock.ValidatorSet{[]mock.Validator{
+		mock.Validator{addr1, sdk.NewRat(7)},
+		mock.Validator{addr2, sdk.NewRat(7)},
+		mock.Validator{addr3, sdk.NewRat(1)},
 	}}
 
 	okey := sdk.NewKVStoreKey("oracle")
@@ -183,7 +123,7 @@ func TestOracle(t *testing.T) {
 	ork := orkGen(cdc, sdk.NewRat(2, 3), 100)
 	h := seqHandler(ork, key, sdk.CodespaceUndefined)
 
-	// Nonvalidator signed, transaction failed
+	// Nonmock.Validator signed, transaction failed
 	msg := Msg{seqOracle{0, 0}, []byte("randomguy")}
 	res := h(ctx, msg)
 	assert.False(t, res.IsOK())
@@ -231,8 +171,8 @@ func TestOracle(t *testing.T) {
 	assert.False(t, res.IsOK())
 	assert.Equal(t, 1, getSequence(ctx, key))
 
-	// Should handle validator set change
-	valset.Validators = append(valset.Validators, validator{addr4, sdk.NewRat(12)})
+	// Should handle mock.Validator set change
+	valset.AddValidator(mock.Validator{addr4, sdk.NewRat(12)})
 	bz, err = json.Marshal(valset)
 	require.Nil(t, err)
 	ctx = ctx.WithBlockHeader(abci.Header{ValidatorsHash: bz})
@@ -255,7 +195,7 @@ func TestOracle(t *testing.T) {
 	assert.True(t, res.IsOK())
 	assert.Equal(t, 2, getSequence(ctx, key))
 
-	// Should handle validator set change while oracle process is happening
+	// Should handle mock.Validator set change while oracle process is happening
 	msg = Msg{seqOracle{2, 3}, addr4}
 
 	// Less than 2/3 signed, msg not processed
@@ -263,8 +203,8 @@ func TestOracle(t *testing.T) {
 	assert.True(t, res.IsOK())
 	assert.Equal(t, 2, getSequence(ctx, key))
 
-	// Signed validator is kicked out
-	valset.Validators = valset.Validators[:len(valset.Validators)-1]
+	// Signed mock.Validator is kicked out
+	valset.RemoveValidator(addr4)
 	bz, err = json.Marshal(valset)
 	require.Nil(t, err)
 	ctx = ctx.WithBlockHeader(abci.Header{ValidatorsHash: bz})
