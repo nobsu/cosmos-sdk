@@ -1,5 +1,24 @@
 # Changelog
 
+## Pending
+
+BREAKING CHANGES
+* [cli] rearranged commands under subcommands
+* [stake] remove Tick and add EndBlocker
+
+FEATURES
+
+IMPROVEMENTS
+* bank module uses go-wire codec instead of 'encoding/json'
+* auth module uses go-wire codec instead of 'encoding/json'
+* revised use of endblock and beginblock
+
+FIXES
+* [cli] fixed cli-bash tests
+* [ci] added cli-bash tests
+* [basecoin] updated basecoin for stake and slashing
+* [docs] fixed references to old cli commands
+
 ## 0.18.1
 
 BREAKING CHANGES
@@ -15,6 +34,7 @@ BREAKING CHANGES
 * [x/auth] Removed GetSignatures() from Tx interface (as different Tx styles might use something different than StdSignature)
 * [store] Removed SubspaceIterator and ReverseSubspaceIterator from KVStore interface and replaced them with helper functions in /types
 * [democoin] add x/oracle module
+* Switch to bech32cosmos on all human readable inputs and outputs
 
 BUG FIXES
 
@@ -56,6 +76,7 @@ FEATURES
 * [stake] Creation of a validator/delegation generics in `/types`
 * [stake] Helper Description of the store in x/stake/store.md
 * [stake] removed use of caches in the stake keeper
+* [stake] Added REST API
 * [Makefile] Added terraform/ansible playbooks to easily create remote testnets on Digital Ocean
 
 BUG FIXES
@@ -87,7 +108,7 @@ FEATURES
 * [gaiacli] Support queries for candidates, delegator-bonds
 * [gaiad] Added `gaiad export` command to export current state to JSON
 * [x/bank] Tx tags with sender/recipient for indexing & later retrieval
-* [x/stake] Tx tags with delegator/candidate for delegation & unbonding, and candidate info for declare candidate / edit candidacy
+* [x/stake] Tx tags with delegator/candidate for delegation & unbonding, and candidate info for declare candidate / edit validator
 
 IMPROVEMENTS
 
@@ -121,7 +142,7 @@ BREAKING CHANGES
 
 FEATURES:
 
-* Gaia stake commands include, DeclareCandidacy, EditCandidacy, Delegate, Unbond
+* Gaia stake commands include, CreateValidator, EditValidator, Delegate, Unbond
 * MountStoreWithDB without providing a custom store works.
 * Repo is now lint compliant / GoMetaLinter with tendermint-lint integrated into CI
 * Better key output, pubkey go-amino hex bytes now output by default
