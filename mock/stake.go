@@ -8,6 +8,7 @@ import (
 )
 
 type Validator struct {
+	Moniker string
 	Address sdk.Address
 	Power   sdk.Rat
 }
@@ -30,6 +31,10 @@ func (v Validator) GetPower() sdk.Rat {
 
 func (v Validator) GetBondHeight() int64 {
 	return 0
+}
+
+func (v Validator) GetMoniker() string {
+	return v.Moniker
 }
 
 type ValidatorSet struct {
