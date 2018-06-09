@@ -109,6 +109,7 @@ func main() {
 	rootCmd.AddCommand(
 		client.PostCommands(
 			bankcmd.SendTxCmd(cdc),
+			bankcmd.SpamTxCmd(cdc),
 		)...)
 
 	// add proxy, version and key info

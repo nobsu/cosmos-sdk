@@ -60,3 +60,46 @@ func SendTxCmd(cdc *wire.Codec) *cobra.Command {
 	cmd.Flags().String(flagAmount, "", "Amount of coins to send")
 	return cmd
 }
+
+// SendTxCommand will create a send tx and sign it with the given key
+func SpamTxCmd(cdc *wire.Codec) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "spam",
+		Short: "Create and sign a send tx, but don't wait for responsse",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.NewCoreContextFromViper().WithDecoder(authcmd.GetAccountDecoder(cdc))
+
+			// get the from/to address
+			from, err := ctx.GetFromAddress()
+			if err != nil {
+				return err
+			}
+
+			toStr := viper.GetString(flagTo)
+
+			to, err := sdk.GetAccAddressBech32(toStr)
+			if err != nil {
+				return err
+			}
+			// parse coins
+			amount := viper.GetString(flagAmount)
+			coins, err := sdk.ParseCoins(amount)
+			if err != nil {
+				return err
+			}
+
+			// build and sign the transaction, then broadcast to Tendermint
+			msg := client.BuildMsg(from, to, coins)
+			_, err = ctx.SignBuildBroadcastAsync(ctx.FromAddressName, msg, cdc)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("relayed to other nodes")
+			return nil
+		},
+	}
+
+	cmd.Flags().String(flagTo, "", "Address to send coins")
+	cmd.Flags().String(flagAmount, "", "Amount of coins to send")
+	return cmd
+}
